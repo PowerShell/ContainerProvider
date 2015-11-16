@@ -466,8 +466,10 @@ function Save-ContainerImageFile
     Write-Verbose $downloadURL
 
     # Download the file
-    if(IsNanoServer)
+    if ((IsNanoServer) -or (get-variable pssenderinfo -ErrorAction SilentlyContinue))
     {
+        # Use custom Save-HTTPItem function if on Nano or in a remote session
+        # This is beacuse BITS service does not work as expected under these circumstances.
         Import-Module "$PSScriptRoot\Save-HttpItem.psm1"
         Save-HTTPItem -Uri $downloadURL `
                         -Destination $destination
