@@ -381,6 +381,11 @@ function Find
     $httpPostRequestMsg.Headers.Add("charset", "utf-8")
 
     # Body
+    <#
+     # Azure search do not support case-insensitive search.
+     # Until this is resolved we are doing client side
+     # filtering
+     
     if($Name)
     {
         $query = "name eq '$Name'"
@@ -395,7 +400,8 @@ function Find
 
         $query += " version eq '$Version'"
     }
-    
+
+    #>
     $httpPostBody = '{
             "filter" : "' + $query + '"
             ,"orderby": "name, version desc"
@@ -426,6 +432,11 @@ function Find
         }
 
         $responseValue = $response.value
+        # apply filtering for Name and Version.
+        # These were not applied when HTTP request is sent
+        $NameToUseInQuery = if ($Name) { $Name } else { "*" }
+        $VersionToUseInQuery = if ($Version -ne $minVersion) { $Version } else { "*" }
+        $responseValue = $responseValue | ? { ($_.name -like "$NameToUseInQuery") -and ($_.version -like "$VersionToUseInQuery") }
 
         $responseClassArray = @()
         foreach($element in $responseValue)
