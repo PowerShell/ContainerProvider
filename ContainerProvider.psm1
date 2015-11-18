@@ -60,10 +60,15 @@ function Find-ContainerImage
     )
     
     $result_Search = Find $Name $Version $SearchKey
-    return $result_Search
 
-    #$result_Search = Find $Name $Version $SearchKey
-    #Display-SearchResults $result_Search
+    # Handle empty search result
+    if(!$result_Search)
+    {
+        Write-Error "No such module found."
+        return
+    }
+
+    return $result_Search
 }
 
 ###
@@ -131,8 +136,7 @@ function Save-ContainerImage
     # Handle empty search result
     if(!$result_Search)
     {
-        Write-Host "No such module found."
-        return
+        throw [System.IO.FileNotFoundException] "No such module found."
     }
 
     [System.Version] $maxVersion = '0.0.0.0'
@@ -214,14 +218,27 @@ function Install-ContainerImage
         [System.String]$SearchKey = $publicQueryKey
     )
 
-    $Destination = $PSScriptRoot + "\" + $Name + ".wim"
+    $Destination = $env:TEMP + "\" + $Name + ".wim"
 
     Write-Verbose "Saving to $Destination"
 
-    Save-ContainerImage -Name $Name `
-                        -Version $Version `
-                        -Destination $Destination `
-                        -SearchKey $SearchKey
+    try
+    {
+        Save-ContainerImage -Name $Name `
+                                -Version $Version `
+                                -Destination $Destination `
+                                -SearchKey $SearchKey
+    }
+    catch
+    {
+        Write-Error "Unable to download."
+        if((Test-Path $Destination))
+        {
+            Write-Verbose "Removing the installer: $Destination"
+            rm $Destination
+        }
+        return        
+    }
 
     $startInstallTime = Get-Date
 
@@ -229,14 +246,14 @@ function Install-ContainerImage
                              -Force
 
     $endInstallTime = Get-Date
-
     $differenceInstallTime = New-TimeSpan -Start $startInstallTime -End $endInstallTime
-
-    "Installed in " + $differenceInstallTime.Hours + " hours, " + $differenceInstallTime.Minutes + " minutes, " + $differenceInstallTime.Seconds + " seconds."
+    $installTime = "Installed in " + $differenceInstallTime.Hours + " hours, " + $differenceInstallTime.Minutes + " minutes, " + $differenceInstallTime.Seconds + " seconds."
+    Write-Verbose $installTime
 
     # Clean up
-    Write-Verbose "Removing the installer"
+    Write-Verbose "Removing the installer: $Destination"
     rm $Destination
+
     Write-Verbose "All Done"
 }
 
@@ -284,12 +301,25 @@ function Install-ContainerImageHelper
         [System.String]$Name
     )
 
-    $Destination = $PSScriptRoot + "\" + $Name + ".wim"
+    $Destination = $env:TEMP + "\" + $Name + ".wim"
 
     Write-Verbose "Saving to $Destination"
 
-    Save-ContainerImageFile -downloadURL $SasToken `
+    try
+    {
+        Save-ContainerImageFile -downloadURL $SasToken `
                         -Destination $Destination
+    }
+    catch
+    {
+        Write-Error "Unable to download."
+        if((Test-Path $Destination))
+        {
+            Write-Verbose "Removing the installer: $Destination"
+            rm $Destination
+        }
+        return
+    }
 
     $startInstallTime = Get-Date
 
@@ -303,7 +333,7 @@ function Install-ContainerImageHelper
     "Installed in " + $differenceInstallTime.Hours + " hours, " + $differenceInstallTime.Minutes + " minutes, " + $differenceInstallTime.Seconds + " seconds."
 
     # Clean up
-    Write-Verbose "Removing the installer"
+    Write-Verbose "Removing the installer: $Destination"
     rm $Destination
     Write-Verbose "All Done"
 }
@@ -381,6 +411,11 @@ function Find
     $httpPostRequestMsg.Headers.Add("charset", "utf-8")
 
     # Body
+    <#
+     # Azure search do not support case-insensitive search.
+     # Until this is resolved we are doing client side
+     # filtering
+     
     if($Name)
     {
         $query = "name eq '$Name'"
@@ -395,7 +430,8 @@ function Find
 
         $query += " version eq '$Version'"
     }
-    
+
+    #>
     $httpPostBody = '{
             "filter" : "' + $query + '"
             ,"orderby": "name, version desc"
@@ -426,6 +462,11 @@ function Find
         }
 
         $responseValue = $response.value
+        # apply filtering for Name and Version.
+        # These were not applied when HTTP request is sent
+        $NameToUseInQuery = if ($Name) { $Name } else { "*" }
+        $VersionToUseInQuery = if ($Version -ne $minVersion) { $Version } else { "*" }
+        $responseValue = $responseValue | ? { ($_.name -like "$NameToUseInQuery") -and ($_.version -like "$VersionToUseInQuery") }
 
         $responseClassArray = @()
         foreach($element in $responseValue)
@@ -481,10 +522,9 @@ function Save-ContainerImageFile
     }
     
     $endTime = Get-Date
-
     $difference = New-TimeSpan -Start $startTime -End $endTime
-
-    "Downloaded in " + $difference.Hours + " hours, " + $difference.Minutes + " minutes, " + $difference.Seconds + " seconds."
+    $downloadTime = "Downloaded in " + $difference.Hours + " hours, " + $difference.Minutes + " minutes, " + $difference.Seconds + " seconds."
+    Write-Verbose $downloadTime
 }
 
 ###
@@ -692,7 +732,8 @@ function Download-Package
     Save-ContainerImageFile $sasToken $destLocation    
 }
 
-function Install-Package { 
+function Install-Package
+{
     param(
         [string] $fastPackageReference
     )   	
