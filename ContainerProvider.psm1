@@ -564,10 +564,27 @@ function IsNanoServer
 
 ###
 ### SUMMARY: Checks if the given destination is kosher or not
+### 1. Check if the user has provider a folder
+###          If so, throw an exception, only absolute path with file name is acceptable
+### 2. Check if parent path exists
+###          If not, create it for the user
+### 3. Check if the file exists
+###          If so, ask the user for ability to re-write
 ###
 function CheckDestination
 {
     param($Destination)
+
+    # Check if entire path is folder structure
+    # If folder throw error, ask for file path
+    $dest_item = Get-Item $Destination `
+                            -ErrorAction SilentlyContinue `
+                            -WarningAction SilentlyContinue
+
+    if($dest_item -is [System.IO.DirectoryInfo])
+    {
+        throw "Please provide file name with path."
+    }
 
     # Check the parent (one minus the whole path) 
     # If the given parent directory doesn't exist
@@ -582,17 +599,6 @@ function CheckDestination
         Write-Verbose "Creating directory structure: $folderPath"
         md $folderPath
         return $true
-    }
-    
-    # Check if entire path is folder structure
-    # If folder throw error, ask for file path
-    $dest_item = Get-Item $Destination `
-                            -ErrorAction SilentlyContinue `
-                            -WarningAction SilentlyContinue
-
-    if($dest_item -is [System.IO.DirectoryInfo])
-    {
-        throw "Please provide file name with path."
     }
     
     # If given parent directory exists
@@ -644,8 +650,6 @@ function CheckDestination
 #endregion Helper Functions
 
 ################################################################################
-
-#Import-Module "$PSScriptRoot\ContainerImageClient.psm1"
 
 $Providername = "ContainerProvider"
 $separator = "|#|"

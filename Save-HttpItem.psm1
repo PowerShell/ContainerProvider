@@ -163,7 +163,7 @@ function Save-RSTBlobItem
 function Invoke-HTTPClient
 {
    param(
-      [String] $FullUri,
+      [Uri] $FullUri,
       [Hashtable] $Headers,
       [ValidateSet('Get','Head')]
       [string] $httpMethod,
