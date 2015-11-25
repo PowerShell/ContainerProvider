@@ -1,4 +1,6 @@
-﻿function Save-HTTPItem
+﻿$retryInterval_ms = 3000
+
+function Save-HTTPItem
 {
     [CmdletBinding()]
     param(
@@ -15,19 +17,17 @@
         {
             throw "Uri: $uri is not supported. Only http or https schema are supported."
         }
-
-        <# Assuming over-writing is approved at this point
-        if (Test-Path $destination)
-        {
-            throw "File $destination exists"
-        }
-        #>
     }
 
     end
     {
         $headers = @{'x-ms-client-request-id'=$(hostname);'x-ms-version'='2015-02-21'}
-        $prop = Invoke-HttpClient -FullUri $fullUri -Verbose -Headers $headers -Method Head -ea SilentlyContinue -ev ev
+        $prop = Invoke-HttpClient -FullUri $fullUri `
+                                    -Headers $headers `
+                                    -Method Head `
+                                    -ea SilentlyContinue `
+                                    -ev ev `
+                                    -Verbose
         if ($ev)
         {
             throw $ev
@@ -117,11 +117,10 @@ function Save-RSTBlobItem
     $length = $byteEnd - $byteStart + 1
     if ($length -le 0)
     {
-        throw 'byteEnd is greaterthan byteStart'
+        throw 'byteEnd is greater than byteStart'
     }
 
     $sizePerIteration = 4mb
-    
 
     $mmvs = $mmpFile.CreateViewStream($byteStart, $length, 'Write')
     try
@@ -209,10 +208,16 @@ function Invoke-HTTPClient
         {
             break;
         }
+
         $retryCount--;
+
+        # Retry after a wait interval
+        Start-Sleep -Milliseconds $retryInterval_ms
+        
         $msg = 'RetryCount: {0}, Http.GetAsync did not return successful status code. Status Code: {1}, {2}' -f `
                     $retryCount, $result.Result.StatusCode, $result.Result.ReasonPhrase 
         $msg = $msg + ('Result Reason Phrase: {0}' -f $result.Result.ReasonPhrase)
+
    } while($retryCount -gt 0)
 
    if (-not $result.Result.IsSuccessStatusCode)
@@ -221,5 +226,6 @@ function Invoke-HTTPClient
                     $result.Result.StatusCode, $result.Result.ReasonPhrase    
        throw $msg
    }
+
    return $result.Result.Content
 }

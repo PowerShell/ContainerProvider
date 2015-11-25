@@ -502,6 +502,11 @@ function Save-ContainerImageFile
 {
     param($downloadURL, $destination)
 
+    if(-not (CheckDiskSpace $destination $downloadURL))
+    {
+        return
+    }
+
     $startTime = Get-Date
 
     Write-Verbose $downloadURL
@@ -642,6 +647,37 @@ function CheckDestination
         }
 
         return $true
+    }
+
+    return $true
+}
+
+###
+### SUMMARY: Checks if the given destination has enough space to download the installer
+###
+function CheckDiskSpace
+{
+    param($Destination, $token)
+
+    Import-Module "$PSScriptRoot\Save-HttpItem.psm1"
+    $headers = @{'x-ms-client-request-id'=$(hostname);'x-ms-version'='2015-02-21'}
+    $httpresponse = Invoke-HttpClient -FullUri $token `
+                                    -Headers $headers `
+                                    -Method Head `
+                                    -ea SilentlyContinue `
+                                    -ev ev
+    
+    $contentLength = $httpresponse.Headers.ContentLength
+
+    $Drive = (Get-Item $Destination).PSDrive.Name
+
+    $getDriveInfo = Get-PSDrive $Drive | select-object Free
+    $getDriveSpace = $getDriveInfo.Free
+
+    if($contentLength -ge ($getDriveSpace * 0.9))
+    {
+        throw "Not enough space on the drive to save the image"
+        return $false
     }
 
     return $true
