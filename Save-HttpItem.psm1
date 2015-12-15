@@ -1,6 +1,4 @@
-﻿$retryInterval_ms = 3000
-
-function Save-HTTPItem
+﻿function Save-HTTPItem
 {
     [CmdletBinding()]
     param(
@@ -23,11 +21,11 @@ function Save-HTTPItem
     {
         $headers = @{'x-ms-client-request-id'=$(hostname);'x-ms-version'='2015-02-21'}
         $prop = Invoke-HttpClient -FullUri $fullUri `
+                                    -Verbose `
                                     -Headers $headers `
                                     -Method Head `
                                     -ea SilentlyContinue `
-                                    -ev ev `
-                                    -Verbose
+                                    -ev ev
         if ($ev)
         {
             throw $ev
@@ -117,7 +115,7 @@ function Save-RSTBlobItem
     $length = $byteEnd - $byteStart + 1
     if ($length -le 0)
     {
-        throw 'byteEnd is greater than byteStart'
+        throw 'byteEnd is greaterthan byteStart'
     }
 
     $sizePerIteration = 4mb
@@ -210,10 +208,6 @@ function Invoke-HTTPClient
         }
 
         $retryCount--;
-
-        # Retry after a wait interval
-        Start-Sleep -Milliseconds $retryInterval_ms
-        
         $msg = 'RetryCount: {0}, Http.GetAsync did not return successful status code. Status Code: {1}, {2}' -f `
                     $retryCount, $result.Result.StatusCode, $result.Result.ReasonPhrase 
         $msg = $msg + ('Result Reason Phrase: {0}' -f $result.Result.ReasonPhrase)

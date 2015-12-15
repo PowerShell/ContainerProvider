@@ -7,7 +7,7 @@ ContainerProvider is a Windows PowerShell module to find, save or install Contai
 	- Install-ContainerImage [-Name <String>] [-Version <Version>]
 
 ### Version
-0.5.3
+0.5.2
 
 ### Version History
 
@@ -15,7 +15,8 @@ ContainerProvider is a Windows PowerShell module to find, save or install Contai
 Initial public release fo ContainerProvider
 
 #### 0.5.3
-Added check to ensure there is enough space on the drive before saving
+Adding capacity to handle folders on share 
 
 ### Dependencies
 This module has no dependencies
+

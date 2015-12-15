@@ -1,13 +1,29 @@
-﻿###
-### SEARCH VARS
-### Techniques are pulled from: https://azure.microsoft.com/en-us/documentation/articles/search-chrome-postman/
-### Index name must only contain lowercase letters, digits or dashes, cannot start or end with dashes and is limited to 128 characters.
+﻿### 
+### SOURCES
 ###
-$fwdLink = "http://go.microsoft.com/fwlink/?LinkID=627586&clcid=0x409"
-$publicQueryKey = '82E9CC3E0342EA5C9B95ED909FC8E039'
-$indexName = 'pshct-pub-srch-index'
+$script:location_modules = "$env:LOCALAPPDATA\containerprovider"
+$script:file_modules = "$script:location_modules\sources.txt"
+$script:ContainerSources = $null
+# Wildcard pattern matching configuration.
+$script:wildcardOptions = [System.Management.Automation.WildcardOptions]::CultureInvariant -bor `
+                          [System.Management.Automation.WildcardOptions]::IgnoreCase
+
+###
+### SEARCH VARS for LIMITED RELEASE SEARCH
+###
+$script:QueryKey = 'QueryKey'
+$script:IndexName = 'IndexName'
+
+###
+### VARS for LOCAL SEARCH
+###
+$script:secondaryPath = 'SecondaryLocation'
+
 $apiVersionQP = 'api-version=2015-02-28'
+$script:location = 'Location'
 [System.Version] $minVersion = '0.0.0.0'
+
+#$script:RegisteredPackageSourcesFilePath = Microsoft.PowerShell.Management\Join-Path -Path $script:LocalPath -ChildPath "ContainerProvider.ps1xml"
 
 #region Functions
 
@@ -53,13 +69,13 @@ function Find-ContainerImage
         [System.String]$Name,
 
         [parameter(Mandatory=$false)]
-        [System.Version]$Version = $minVersion,
+        [System.Version]$Version,
 
         [parameter(Mandatory=$false)]
-        [System.String]$SearchKey = $publicQueryKey
+        [System.String]$Source
     )
     
-    $result_Search = Find $Name $Version $SearchKey
+    $result_Search = Find $Name $Version $Source
 
     # Handle empty search result
     if(!$result_Search)
@@ -91,7 +107,7 @@ function Save-ContainerImage
 
         .SYNTAX
         Save-ContainerImage [[-Name] <String>] [[-Destination] <String>] 
-                            [[-Version] <Version>] [-SearchKey [String]]
+                            [[-Version] <Version>]
 
         .DESCRIPTION
         The Save-ContainerImage cmdlet lets you save a container image locally without installing it.
@@ -119,11 +135,11 @@ function Save-ContainerImage
         [parameter(Mandatory=$false)]
         [System.String]$Version = $minVersion,
 
-        [parameter(Mandatory=$true)]
-        [System.String]$Destination,
-
         [parameter(Mandatory=$false)]
-        [System.String]$SearchKey = $publicQueryKey
+        [System.String]$Source,
+
+        [parameter(Mandatory=$true)]
+        [System.String]$Destination
     )
 
     if(-not (CheckDestination $Destination))
@@ -131,7 +147,7 @@ function Save-ContainerImage
         return
     }
 
-    $result_Search = Find $Name $Version $SearchKey
+    $result_Search = Find $Name $Version $Source
 
     # Handle empty search result
     if(!$result_Search)
@@ -166,7 +182,7 @@ function Save-ContainerImage
 
     Write-Verbose "Downloading $maxName. Version: $maxVersion"
 
-    Save-ContainerImageFile $maxToken $Destination
+    Save-File $maxToken $Destination
 }
 
 ###
@@ -215,7 +231,7 @@ function Install-ContainerImage
         [System.String]$Version = $minVersion,
 
         [parameter(Mandatory=$false)]
-        [System.String]$SearchKey = $publicQueryKey
+        [System.String]$Source
     )
 
     $Destination = $env:TEMP + "\" + $Name + ".wim"
@@ -226,8 +242,7 @@ function Install-ContainerImage
     {
         Save-ContainerImage -Name $Name `
                                 -Version $Version `
-                                -Destination $Destination `
-                                -SearchKey $SearchKey
+                                -Destination $Destination                                
     }
     catch
     {
@@ -307,7 +322,7 @@ function Install-ContainerImageHelper
 
     try
     {
-        Save-ContainerImageFile -downloadURL $SasToken `
+        Save-AzureContainerImageFile -downloadURL $SasToken `
                         -Destination $Destination
     }
     catch
@@ -335,7 +350,6 @@ function Install-ContainerImageHelper
     # Clean up
     Write-Verbose "Removing the installer: $Destination"
     rm $Destination
-    Write-Verbose "All Done"
 }
 
 #endregion Functions
@@ -370,19 +384,116 @@ function Display-SearchResults
 }
 
 ###
+### SUMMARY: Find 
+###
+###
+function Find
+{
+    param($Name, $Version, $sources)
+
+    $allSources = Get-Sources $sources
+
+    $allResults = @()
+
+    foreach($source in $allSources)
+    {
+        $location = $source.$script:location
+
+        if($location.StartsWith("http://") -or $location.StartsWith("https://"))
+        {
+            $queryKey = $source.$script:QueryKey
+            $index = $source.$script:IndexName
+
+            $allResults += Find-Azure $Name $Version $location $index $queryKey
+        }
+        elseif($location.StartsWith("\\"))
+        {
+            $sPath = $source.$script:secondaryPath
+
+            $allResults += Find-Local $Name $Version $location
+        }
+    }
+
+    return $allResults
+}
+
+###
+### SUMMARY: Gets the source from where to get the images
+### Initializes the variables for find, download and install
+### RETURN:
+### Returns the type of 
+###
+function Get-Sources
+{
+    param($sources)
+
+    Set-ModuleSourcesVariable
+
+    $allSources = @()
+
+    if($script:ContainerSources.Count -eq 0)
+    {
+        Register-PackageSource -name Public `
+						-ProviderName ContainerProvider `
+						-IndexName pshct-pub-srch-index `
+						-QueryKey 82E9CC3E0342EA5C9B95ED909FC8E039 `
+						-Location "http://go.microsoft.com/fwlink/?LinkID=627586&clcid=0x409"
+    }
+
+    foreach($mySource in $script:ContainerSources.Values)
+    {
+        if((-not $sources) -or
+            (($mySource.Name -eq $sources) -or
+               ($mySource.SourceLocation -eq $sources)))
+        {
+            $tempHolder = @{}
+
+            $location = $mySource."SourceLocation"
+            $tempHolder.Add($script:location, $location)
+            
+            $queryKey = $mySource.$script:QueryKey
+            $tempHolder.Add($script:QueryKey, $queryKey)
+            
+            $indexName = $mySource.$script:IndexName
+            $tempHolder.Add($script:IndexName, $indexName)
+            
+            $allSources += $tempHolder
+        }
+    }
+
+    return $allSources
+}
+
+###
+### SUMMARY: Deserializes the PSObject
+###
+function DeSerialize-PSObject
+{
+    [CmdletBinding(PositionalBinding=$false)]    
+    Param
+    (
+        [Parameter(Mandatory=$true)]        
+        $Path
+    )
+    $filecontent = Microsoft.PowerShell.Management\Get-Content -Path $Path
+    [System.Management.Automation.PSSerializer]::Deserialize($filecontent)    
+}
+
+###
 ### SUMMARY: Finds the container image entries on Azure Search
 ### PARAMS:
 ### 1. Name: Name of the image
 ### 2. Version: Version of the image
 ###
-function Find
+function Find-Azure
 {
-    param($Name, $Version, $queryKey=$publicQueryKey)
+    param($Name, $Version, $fwdLink, $indexName, $queryKey)
     
     if(-not (IsNanoServer))
     {
         Add-Type -AssemblyName System.Net.Http
     }
+
     $httpPostClient = New-Object System.Net.Http.HttpClient
     $httpPostRequestMsg = New-Object System.Net.Http.HttpRequestMessage(
                             [System.Net.Http.HttpMethod]::Post,
@@ -406,7 +517,7 @@ function Find
 
     $httpPostClient.DefaultRequestHeaders.Accept.Add($acceptHeader)
 
-    # Headers
+    # Headers`
     $httpPostRequestMsg.Headers.Add("api-key", $queryKey)
     $httpPostRequestMsg.Headers.Add("charset", "utf-8")
 
@@ -465,7 +576,7 @@ function Find
         # apply filtering for Name and Version.
         # These were not applied when HTTP request is sent
         $NameToUseInQuery = if ($Name) { $Name } else { "*" }
-        $VersionToUseInQuery = if ($Version -ne $minVersion) { $Version } else { "*" }
+        $VersionToUseInQuery = if ($Version) { $Version } else { "*" }
         $responseValue = $responseValue | ? { ($_.name -like "$NameToUseInQuery") -and ($_.version -like "$VersionToUseInQuery") }
 
         $responseClassArray = @()
@@ -496,36 +607,118 @@ function Find
 }
 
 ###
+### SUMMARY: Finds the container image entries from the share directory
+### PARAMS:
+### 1. Name: Name of the image
+### 2. Version: Version of the image
+###
+function Find-Local
+{
+    param($Name, $Version, $localPath)
+    
+    $responseArray = @()
+
+    $subFolders = Get-ChildItem -Path $localPath | sort LastWriteTime `
+                                                        -Descending | % { $_.FullName }
+
+    for($index = 0; $index -le 19; $index++)
+    {
+        $subFolder = $subFolders[$index]
+        
+        $fullPath = Join-Path $subFolder $sPath
+
+        if((-not $Name) -or ($Name.ToLower().Contains("nano")))
+        {
+            $search_nano = "*nano*.wim"
+            
+            $images_nano = @()
+            $images_nano = Get-ChildItem -Path $fullPath `
+                                    -ErrorAction SilentlyContinue `
+                                    -Filter $search_nano `
+                                    -Recurse `
+                                    -Force | % { $_.FullName }
+
+            foreach($nanoImage in $images_nano)
+            {
+                $version_nano = get-Version $nanoImage
+
+                if((-not $Version) -or ($Version -eq $version_nano))
+                {
+                    $item_nano = [ContainerImageItem]::new()
+                    $item_nano.Name = "Nano"
+                    $item_nano.version = $version_nano
+                    $item_nano.sasToken = $nanoImage
+                    $item_nano.description = "Nano " + $version_nano
+
+                    $responseArray += $item_nano
+                }
+            }
+        }
+
+        if((-not $Name) -or ($Name.ToLower().Contains("servercore")))
+        {
+            $search_server = "*ServerDatacenterCore*.wim"
+
+            $images_server = @()
+            $images_server = Get-ChildItem -Path $fullPath `
+                                    -ErrorAction SilentlyContinue `
+                                    -Filter $search_server `
+                                    -Recurse `
+                                    -Force | % { $_.FullName }
+        
+            foreach($serverImage in $images_server)
+            {
+                $version_server = get-Version $serverImage
+
+                if((-not $Version) -or ($Version -eq $version_server))
+                {
+                    $item_server = [ContainerImageItem]::new()
+                    $item_server.Name = "WindowsServerCore"
+                    $item_server.version = $version_server
+                    $item_server.sasToken = $serverImage
+                    $item_server.description = "Server " + $version_server
+                    $responseArray += $item_server
+                }
+            }
+        }
+    }
+
+    return $responseArray
+}
+
+###
 ### SUMMARY: Download the file given the URI to the given location
 ###
-function Save-ContainerImageFile
+function Save-File
 {
     param($downloadURL, $destination)
-
-    if(-not (CheckDiskSpace $destination $downloadURL))
-    {
-        return
-    }
 
     $startTime = Get-Date
 
     Write-Verbose $downloadURL
 
-    # Download the file
-    if ((IsNanoServer) -or (get-variable pssenderinfo -ErrorAction SilentlyContinue))
+    if($downloadURL.StartsWith("http://") -or $downloadURL.StartsWith("https://"))
     {
-        # Use custom Save-HTTPItem function if on Nano or in a remote session
-        # This is beacuse BITS service does not work as expected under these circumstances.
-        Import-Module "$PSScriptRoot\Save-HttpItem.psm1"
-        Save-HTTPItem -Uri $downloadURL `
-                        -Destination $destination
+        # Download the file
+        if ((IsNanoServer) -or (get-variable pssenderinfo -ErrorAction SilentlyContinue))
+        {
+            # Use custom Save-HTTPItem function if on Nano or in a remote session
+            # This is beacuse BITS service does not work as expected under these circumstances.
+            Import-Module "$PSScriptRoot\Save-HttpItem.psm1"
+            Save-HTTPItem -Uri $downloadURL `
+                            -Destination $destination
+        }
+        else
+        {   
+            Start-BitsTransfer -Source $downloadURL `
+                            -Destination $destination
+        }
     }
-    else
-    {   
-        Start-BitsTransfer -Source $downloadURL `
-                        -Destination $destination
+    elseif($downloadURL.StartsWith("\\"))
+    {
+        cp $downloadURL $destination
     }
-    
+
     $endTime = Get-Date
     $difference = New-TimeSpan -Start $startTime -End $endTime
     $downloadTime = "Downloaded in " + $difference.Hours + " hours, " + $difference.Minutes + " minutes, " + $difference.Seconds + " seconds."
@@ -653,39 +846,33 @@ function CheckDestination
 }
 
 ###
-### SUMMARY: Checks if the given destination has enough space to download the installer
+### SUMMARY: Finds the version of the given image
 ###
-function CheckDiskSpace
+### PARAMS:
+### 1. Full Path: Path to the image
+### 
+### RETURNS:
+### The version of the image
+###
+function get-Version
 {
-    param($Destination, $token)
+    param($fullPath)
 
-    Import-Module "$PSScriptRoot\Save-HttpItem.psm1"
-    $headers = @{'x-ms-client-request-id'=$(hostname);'x-ms-version'='2015-02-21'}
-    $httpresponse = Invoke-HttpClient -FullUri $token `
-                                    -Headers $headers `
-                                    -Method Head `
-                                    -ea SilentlyContinue `
-                                    -ev ev
-    
-    $contentLength = $httpresponse.Headers.ContentLength
-
-    $Drive = (Get-Item $Destination).PSDrive.Name
-
-    $getDriveInfo = Get-PSDrive $Drive | select-object Free
-    $getDriveSpace = $getDriveInfo.Free
-
-    if($contentLength -ge ($getDriveSpace * 0.9))
+    # Throw error if the given File is folder or doesn't exist
+    if((Get-Item $fullPath) -is [System.IO.DirectoryInfo])
     {
-        throw "Not enough space on the drive to save the image"
-        return $false
+        Write-Error "Please enter a file name not a folder."
+        throw "$fullPath is a folder not file"
     }
 
-    return $true
-}
+    $containerImageInfo = Get-WindowsImage -ImagePath $fullPath -Index 1
+    $containerImageVersion = $containerImageInfo.Version
 
+    return $containerImageVersion
+}
 #endregion Helper Functions
 
-################################################################################
+#region PackageProvider
 
 $Providername = "ContainerProvider"
 $separator = "|#|"
@@ -711,7 +898,16 @@ function Find-Package
         [string] $maximumVersion
     )
 
+    $options = $request.Options
+
     $null = write-debug "In $($ProviderName)- Find-Package"
+
+    $sourcesName = $null
+
+    if ($options -and $options.ContainsKey['Source'])
+    {
+        $sourcesName = $options['Source']
+    }
 
     if ([string]::IsNullOrWhiteSpace($requiredVersion)) {
         $requiredVersion = [System.Version]::new("0.0.0.0")
@@ -720,8 +916,8 @@ function Find-Package
     else {
         $requiredVersion = [System.Version]::new($requiredVersion)
     }
-		    	    	    
-    foreach($container in (Find -Name $names[0] -Version $requiredVersion))
+
+    foreach($container in (Find -Name $names[0] -Version $requiredVersion -Sources $sourcesName))
     {
         if ($request.IsCancelled)
         {
@@ -769,7 +965,7 @@ function Download-Package
 
     $sasToken = $resultArray[3]
 
-    Save-ContainerImageFile $sasToken $destLocation    
+    Save-AzureContainerImageFile $sasToken $destLocation    
 }
 
 function Install-Package
@@ -836,4 +1032,244 @@ function Get-InstalledPackages
     }
 }
 
-##########################################################################
+function Set-ModuleSourcesVariable
+{
+    [CmdletBinding()]
+    param([switch]$Force)
+
+    if(-not $script:ContainerSources-or $Force)
+    {
+        if(Microsoft.PowerShell.Management\Test-Path $script:file_modules)
+        {
+            $script:ContainerSources = DeSerialize-PSObject -Path $script:file_modules
+        }
+        else
+        {
+            $script:ContainerSources = [ordered]@{}
+        }
+     }
+}
+
+function Get-DynamicOptions
+{
+    param
+    (
+        [Microsoft.PackageManagement.MetaProvider.PowerShell.OptionCategory] 
+        $category
+    )
+
+    switch($category)
+    {
+        Source  {
+                    Write-Output -InputObject (New-DynamicOption -Category $category -Name $script:QueryKey -ExpectedType String -IsRequired $false)
+                    Write-Output -InputObject (New-DynamicOption -Category $category -Name $script:IndexName -ExpectedType String -IsRequired $false)
+                    Write-Output -InputObject (New-DynamicOption -Category $category -Name $script:secondaryPath -ExpectedType String -IsRequired $false)
+                }
+    }
+}
+
+function Add-PackageSource
+{
+    [CmdletBinding()]
+    param
+    (
+        [string]
+        $Name,
+         
+        [string]
+        $Location,
+
+        [bool]
+        $Trusted
+    )
+
+    # Validate Name
+    # Validate for wild card pattern
+    # $Name
+
+    # Validate path
+    # Check if Location is already registered with another Name
+    # $Location
+
+    Set-ModuleSourcesVariable -Force
+
+    $Options = $request.Options
+
+    $query_key = $null
+    if($Options.ContainsKey($script:QueryKey))
+    {
+        $query_key = $Options[$script:QueryKey]
+    }
+
+    $index_name = $null
+    if($Options.ContainsKey($script:IndexName))
+    {
+        $index_name = $Options[$script:IndexName]
+    }
+
+    $secondary_location = $null
+    if($Options.ContainsKey($script:secondaryPath))
+    {
+        $secondary_location = $Options[$script:secondaryPath]
+    }
+
+    # Add new module source
+    $moduleSource = Microsoft.PowerShell.Utility\New-Object PSCustomObject -Property ([ordered]@{
+            Name = $Name
+            SourceLocation = $Location            
+            Trusted=$Trusted
+            Registered= $true
+            InstallationPolicy = if($Trusted) {'Trusted'} else {'Untrusted'}
+            QueryKey = $query_key 
+            IndexName = $index_name
+            SecondaryLocation = $secondary_location
+        })
+
+    #TODO: Check if name already exists
+    $script:ContainerSources.Add($Name, $moduleSource)
+
+    Save-ModuleSources
+
+    Write-Output -InputObject (New-PackageSourceFromModuleSource -ModuleSource $moduleSource)
+}
+
+function Remove-PackageSource
+{
+}
+
+function Resolve-PackageSource
+{
+    Set-ModuleSourcesVariable
+    $SourceName = $request.PackageSources
+    
+    if(-not $SourceName)
+    {
+        $SourceName = "*"
+    }
+
+    foreach($moduleSourceName in $SourceName)
+    {
+        if($request.IsCanceled)
+        {
+            return
+        }
+
+        $wildcardPattern = New-Object System.Management.Automation.WildcardPattern $moduleSourceName,$script:wildcardOptions
+        $moduleSourceFound = $false
+
+        $script:ContainerSources.GetEnumerator() | 
+            Microsoft.PowerShell.Core\Where-Object {$wildcardPattern.IsMatch($_.Key)} | 
+                Microsoft.PowerShell.Core\ForEach-Object {
+
+                    $moduleSource = $script:ContainerSources[$_.Key]
+
+                    $packageSource = New-PackageSourceFromModuleSource -ModuleSource $moduleSource
+
+                    Write-Output -InputObject $packageSource
+
+                    $moduleSourceFound = $true
+                }
+
+        if(-not $moduleSourceFound)
+        {
+            $sourceName  = Get-SourceName -Location $moduleSourceName
+
+            if($sourceName)
+            {
+                $moduleSource = $script:ContainerSources[$sourceName]
+
+                $packageSource = New-PackageSourceFromModuleSource -ModuleSource $moduleSource
+
+                Write-Output -InputObject $packageSource
+            }
+            <#
+            elseif( -not (Test-WildcardPattern $moduleSourceName))
+            {
+                $message = "$moduleSourceName not found"
+
+                Write-Error -Message $message `
+                            -ErrorId "RepositoryNotFound" `
+                            -Category InvalidOperation `
+                            -TargetObject $moduleSourceName
+            }
+            #>
+        }
+    }
+}
+
+function Save-ModuleSources
+{
+    # check if exists
+    if(-not (Test-Path $script:location_modules))
+    {
+        md $script:location_modules
+    }
+
+    # seralize module
+    Microsoft.PowerShell.Utility\Out-File -FilePath $script:file_modules `
+                                            -Force `
+                                            -InputObject ([System.Management.Automation.PSSerializer]::Serialize($script:ContainerSources))
+}
+
+function New-PackageSourceFromModuleSource
+{
+    param
+    (
+        [Parameter(Mandatory=$true)]
+        $ModuleSource
+    )
+
+    $packageSourceDetails = @{}
+
+    # check if querykey and index name exist
+    if ([string]::IsNullOrWhiteSpace($ModuleSource.$script:QueryKey))
+    {
+        $packageSourceDetails[$script:QueryKey] = $ModuleSource.$script:QueryKey
+    }
+
+    if ([string]::IsNullOrWhiteSpace($ModuleSource.$script:IndexName))
+    {
+        $packageSourceDetails[$script:IndexName] = $ModuleSource.$script:IndexName
+    }
+
+    if ([string]::IsNullOrWhiteSpace($ModuleSource.$script:secondaryPath))
+    {
+        $packageSourceDetails[$script:secondaryPath] = $ModuleSource.$script:secondaryPath
+    }
+
+    # create a new package source
+    $src =  New-PackageSource -Name $ModuleSource.Name `
+                              -Location $ModuleSource.SourceLocation `
+                              -Trusted $ModuleSource.Trusted `
+                              -Registered $ModuleSource.Registered `
+                              -Details $packageSourceDetails
+
+    # return the package source object.
+    Write-Output -InputObject $src
+}
+
+function Get-SourceName
+{
+    [CmdletBinding()]
+    [OutputType("string")]
+    Param
+    (
+        [Parameter(Mandatory=$true)]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $Location
+    )
+
+    Set-ModuleSourcesVariable
+
+    foreach($psModuleSource in $script:ContainerSources.Values)
+    {
+        if(($psModuleSource.Name -eq $Location) -or
+           ($psModuleSource.SourceLocation -eq $Location))
+        {
+            return $psModuleSource.Name
+        }
+    }
+}
+
+#endregion PackageProvider
