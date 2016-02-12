@@ -13,11 +13,11 @@ $script:wildcardOptions = [System.Management.Automation.WildcardOptions]::Cultur
 ###
 $script:QueryKey = 'QueryKey'
 $script:IndexName = 'IndexName'
+$Script:PSGalleryModuleSource="PSGallery"
 
 ###
 ### VARS for LOCAL SEARCH
 ###
-$script:secondaryPath = 'SecondaryLocation'
 
 $apiVersionQP = 'api-version=2015-02-28'
 $script:location = 'Location'
@@ -80,7 +80,6 @@ function Find-ContainerImage
     # Handle empty search result
     if(!$result_Search)
     {
-        Write-Error "No such module found."
         return
     }
 
@@ -133,7 +132,7 @@ function Save-ContainerImage
         [System.String]$Name,
 
         [parameter(Mandatory=$false)]
-        [System.String]$Version = $minVersion,
+        [System.String]$Version,
 
         [parameter(Mandatory=$false)]
         [System.String]$Source,
@@ -228,7 +227,7 @@ function Install-ContainerImage
         [System.String]$Name,
 
         [parameter(Mandatory=$false)]
-        [System.String]$Version = $minVersion,
+        [System.String]$Version,
 
         [parameter(Mandatory=$false)]
         [System.String]$Source
@@ -316,13 +315,13 @@ function Install-ContainerImageHelper
         [System.String]$Name
     )
 
-    $Destination = $env:TEMP + "\" + $Name + ".wim"
+    $Destination = $env:TEMP + "\" + $Name
 
     Write-Verbose "Saving to $Destination"
 
     try
     {
-        Save-AzureContainerImageFile -downloadURL $SasToken `
+        Save-File -downloadURL $SasToken `
                         -Destination $Destination
     }
     catch
@@ -335,6 +334,8 @@ function Install-ContainerImageHelper
         }
         return
     }
+
+    Write-Verbose "Installing $Name"
 
     $startInstallTime = Get-Date
 
@@ -364,6 +365,7 @@ Class ContainerImageItem
     [string] $Name;
     [string] $description;
     [string] $sasToken;
+    [string] $source;
     [Version] $version;
 }
 
@@ -378,6 +380,7 @@ function Display-SearchResults
 
     $formatting = @{Expression={$_.Name};Label="Name";width=20}, `
                     @{Expression={$_.version};Label="Version";width=25}, `
+                    @{Expression={$_.source};Label="Source";width=25}, `
                     @{Expression={$_.description};Label="Description";width=60}
         
     $searchResults | Format-Table $formatting
@@ -395,22 +398,21 @@ function Find
 
     $allResults = @()
 
-    foreach($source in $allSources)
+    foreach($theSource in $allSources)
     {
-        $location = $source.$script:location
+        $location = $theSource.$script:location
+        $packageSourceName = $theSource.PackageSourceName
 
         if($location.StartsWith("http://") -or $location.StartsWith("https://"))
         {
-            $queryKey = $source.$script:QueryKey
-            $index = $source.$script:IndexName
+            $queryKey = $theSource.$script:QueryKey
+            $index = $theSource.$script:IndexName
 
-            $allResults += Find-Azure $Name $Version $location $index $queryKey
+            $allResults += Find-Azure $Name $Version $location $index $queryKey $packageSourceName
         }
         elseif($location.StartsWith("\\"))
         {
-            $sPath = $source.$script:secondaryPath
-
-            $allResults += Find-Local $Name $Version $location
+            $allResults += Find-UNCPath $Name $Version $location $packageSourceName
         }
     }
 
@@ -429,16 +431,7 @@ function Get-Sources
 
     Set-ModuleSourcesVariable
 
-    $allSources = @()
-
-    if($script:ContainerSources.Count -eq 0)
-    {
-        Register-PackageSource -name Public `
-						-ProviderName ContainerProvider `
-						-IndexName pshct-pub-srch-index `
-						-QueryKey 82E9CC3E0342EA5C9B95ED909FC8E039 `
-						-Location "http://go.microsoft.com/fwlink/?LinkID=627586&clcid=0x409"
-    }
+    $listOfSources = @()
 
     foreach($mySource in $script:ContainerSources.Values)
     {
@@ -456,12 +449,15 @@ function Get-Sources
             
             $indexName = $mySource.$script:IndexName
             $tempHolder.Add($script:IndexName, $indexName)
+
+            $packageSourceName = $mySource.Name
+            $tempHolder.Add("PackageSourceName", $packageSourceName)
             
-            $allSources += $tempHolder
+            $listOfSources += $tempHolder
         }
     }
 
-    return $allSources
+    return $listOfSources
 }
 
 ###
@@ -487,7 +483,7 @@ function DeSerialize-PSObject
 ###
 function Find-Azure
 {
-    param($Name, $Version, $fwdLink, $indexName, $queryKey)
+    param($Name, $Version, $fwdLink, $indexName, $queryKey, $packageSourceName)
     
     if(-not (IsNanoServer))
     {
@@ -587,6 +583,7 @@ function Find-Azure
             $item.description = $element.Description
             $item.version = $element.version
             $item.sasToken = $element.sastoken
+            $item.source = $packageSourceName
 
             $responseClassArray += $item
         }
@@ -612,30 +609,25 @@ function Find-Azure
 ### 1. Name: Name of the image
 ### 2. Version: Version of the image
 ###
-function Find-Local
+function Find-UNCPath
 {
-    param($Name, $Version, $localPath)
+    param($Name, $Version, $localPath, $packageSourceName)
     
     $responseArray = @()
 
-    $subFolders = Get-ChildItem -Path $localPath | sort LastWriteTime `
-                                                        -Descending | % { $_.FullName }
-
-    for($index = 0; $index -le 19; $index++)
+    try
     {
-        $subFolder = $subFolders[$index]
-        
-        $fullPath = Join-Path $subFolder $sPath
-
         if((-not $Name) -or ($Name.ToLower().Contains("nano")))
         {
             $search_nano = "*nano*.wim"
             
             $images_nano = @()
-            $images_nano = Get-ChildItem -Path $fullPath `
+            $images_nano = Get-ChildItem -Path $localPath `
                                     -ErrorAction SilentlyContinue `
                                     -Filter $search_nano `
                                     -Recurse `
+                                    -File `
+                                    -Depth 3 `
                                     -Force | % { $_.FullName }
 
             foreach($nanoImage in $images_nano)
@@ -645,11 +637,11 @@ function Find-Local
                 if((-not $Version) -or ($Version -eq $version_nano))
                 {
                     $item_nano = [ContainerImageItem]::new()
-                    $item_nano.Name = "Nano"
+                    $item_nano.Name = "NanoServer"
                     $item_nano.version = $version_nano
                     $item_nano.sasToken = $nanoImage
                     $item_nano.description = "Nano " + $version_nano
-
+                    $item_nano.source = $packageSourceName
                     $responseArray += $item_nano
                 }
             }
@@ -660,10 +652,12 @@ function Find-Local
             $search_server = "*ServerDatacenterCore*.wim"
 
             $images_server = @()
-            $images_server = Get-ChildItem -Path $fullPath `
+            $images_server = Get-ChildItem -Path $localPath `
                                     -ErrorAction SilentlyContinue `
                                     -Filter $search_server `
                                     -Recurse `
+                                    -File `
+                                    -Depth 3 `
                                     -Force | % { $_.FullName }
         
             foreach($serverImage in $images_server)
@@ -677,10 +671,16 @@ function Find-Local
                     $item_server.version = $version_server
                     $item_server.sasToken = $serverImage
                     $item_server.description = "Server " + $version_server
+                    $item_server.source = $packageSourceName
                     $responseArray += $item_server
                 }
             }
         }
+    }
+    catch
+    {
+        Write-Error "Unable to access the sub-folders of $localPath"
+        return
     }
 
     return $responseArray
@@ -895,7 +895,8 @@ function Find-Package
         [string[]] $names,
         [string] $requiredVersion,
         [string] $minimumVersion,
-        [string] $maximumVersion
+        [string] $maximumVersion,
+        [string] $allVersion
     )
 
     $options = $request.Options
@@ -904,42 +905,45 @@ function Find-Package
 
     $sourcesName = $null
 
-    if ($options -and $options.ContainsKey['Source'])
+    if ($options -and $options.ContainsKey('Source'))
     {
         $sourcesName = $options['Source']
     }
 
     if ([string]::IsNullOrWhiteSpace($requiredVersion)) {
-        $requiredVersion = [System.Version]::new("0.0.0.0")
-        $null = write-debug "version is null"
+        $resultContainers = Find -Name $names[0] -Sources $sourcesName
     }
     else {
         $requiredVersion = [System.Version]::new($requiredVersion)
+        $resultContainers = Find -Name $names[0] `
+                                    -Version $requiredVersion `
+                                    -Sources $sourcesName
     }
 
-    foreach($container in (Find -Name $names[0] -Version $requiredVersion -Sources $sourcesName))
+    foreach($container in $resultContainers)
     {
-        if ($request.IsCancelled)
-        {
-            $null = Write-Verbose "Request has been cancelled."
-            return
-        }
+	    if ($request.IsCancelled)
+	    {
+		    $null = Write-Verbose "Request has been cancelled."
+		    return
+	    }
 
-        $fastPackageReference = $container.Name + $separator +
-                                    $container.version + $separator + 
-                                    $container.Description + $separator + 
-                                    $container.sasToken
+	    $fastPackageReference = $container.Name + $separator +
+								    $container.version + $separator + 
+								    $container.Description + $separator + 
+								    $container.sasToken + $separator + 
+								    $container.source
 
-        $containerSWID = @{
-            name = $container.Name
-            version = $container.Version
-            versionScheme = "semver"
-            summary = $container.Description
-            source = "Azure Public"
-            fastPackageReference = $fastPackageReference
-        }
+	    $containerSWID = @{
+			    name = $container.Name
+			    version = $container.Version
+			    versionScheme = "MultiPartNumeric"
+			    summary = $container.Description
+			    source = $container.source
+			    fastPackageReference = $fastPackageReference
+	    }
 
-        New-SoftwareIdentity @containerSWID
+	    New-SoftwareIdentity @containerSWID
     }
 }
 
@@ -963,9 +967,32 @@ function Download-Package
     
     [string[]] $resultArray = $fastPackageReference.Split($splitterArray, [System.StringSplitOptions]::None);
 
-    $sasToken = $resultArray[3]
+    if($resultArray.Count -eq 0)
+    {
+        throw new "Error installing package. Unable to get the package reference"
+    }
 
-    Save-AzureContainerImageFile $sasToken $destLocation    
+    $name = $resultArray[0]
+    $fileName =  $name + ".wim"
+    $destPath = Join-Path $destLocation $fileName
+    
+    $version = $resultArray[1]
+    $desc = $resultArray[2]
+    $sasToken = $resultArray[3]
+    $origin = $resultArray[4]
+
+    Save-File $sasToken $destPath
+
+    $container = @{
+        name = $name
+        version = $version
+        versionScheme = "MultiPartNumeric"
+        summary = $desc
+        source = $origin
+        fastPackageReference = $fastPackageReference
+    }
+
+    Write-Output (New-SoftwareIdentity @container)
 }
 
 function Install-Package
@@ -977,8 +1004,13 @@ function Install-Package
     [string[]] $splitterArray = @("$separator")
     
     [string[]] $resultArray = $fastPackageReference.Split($splitterArray, [System.StringSplitOptions]::None);
+    
+    if($resultArray.Count -eq 0)
+    {
+        throw new "Error installing package. Unable to get the package reference"
+    }
 
-    $name = $resultArray[0]
+    $name = $resultArray[0] + ".wim"
     $sasToken = $resultArray[3]
 	
 	$null = write-debug "Name of the container is $name and sastoken is $sasToken"
@@ -1023,8 +1055,8 @@ function Get-InstalledPackages
         $containerSWID = @{
             name = $container.Name
             version = $container.Version
-            versionScheme = "semver"
-            source = "Azure Public"
+            versionScheme = "MultiPartNumeric"
+            source = $container.source
             fastPackageReference = $container.Name
         }
 
@@ -1037,17 +1069,27 @@ function Set-ModuleSourcesVariable
     [CmdletBinding()]
     param([switch]$Force)
 
-    if(-not $script:ContainerSources-or $Force)
+    if(Microsoft.PowerShell.Management\Test-Path $script:file_modules)
     {
-        if(Microsoft.PowerShell.Management\Test-Path $script:file_modules)
-        {
-            $script:ContainerSources = DeSerialize-PSObject -Path $script:file_modules
-        }
-        else
-        {
-            $script:ContainerSources = [ordered]@{}
-        }
-     }
+        $script:ContainerSources = DeSerialize-PSObject -Path $script:file_modules
+    }
+    else
+    {
+        $script:ContainerSources = [ordered]@{}
+                
+        $defaultModuleSource = Microsoft.PowerShell.Utility\New-Object PSCustomObject -Property ([ordered]@{
+        Name = "ContainerImageGallery"
+        SourceLocation = "http://go.microsoft.com/fwlink/?LinkID=627586&clcid=0x409"
+        Trusted=$false
+        Registered= $true
+        InstallationPolicy = "Untrusted"
+        QueryKey = "82E9CC3E0342EA5C9B95ED909FC8E039"
+        IndexName = "pshct-pub-srch-index"
+        })
+
+        $script:ContainerSources.Add("ContainerImageGallery", $defaultModuleSource)
+        Save-ModuleSources
+    }
 }
 
 function Get-DynamicOptions
@@ -1063,7 +1105,6 @@ function Get-DynamicOptions
         Source  {
                     Write-Output -InputObject (New-DynamicOption -Category $category -Name $script:QueryKey -ExpectedType String -IsRequired $false)
                     Write-Output -InputObject (New-DynamicOption -Category $category -Name $script:IndexName -ExpectedType String -IsRequired $false)
-                    Write-Output -InputObject (New-DynamicOption -Category $category -Name $script:secondaryPath -ExpectedType String -IsRequired $false)
                 }
     }
 }
@@ -1083,14 +1124,6 @@ function Add-PackageSource
         $Trusted
     )
 
-    # Validate Name
-    # Validate for wild card pattern
-    # $Name
-
-    # Validate path
-    # Check if Location is already registered with another Name
-    # $Location
-
     Set-ModuleSourcesVariable -Force
 
     $Options = $request.Options
@@ -1107,12 +1140,6 @@ function Add-PackageSource
         $index_name = $Options[$script:IndexName]
     }
 
-    $secondary_location = $null
-    if($Options.ContainsKey($script:secondaryPath))
-    {
-        $secondary_location = $Options[$script:secondaryPath]
-    }
-
     # Add new module source
     $moduleSource = Microsoft.PowerShell.Utility\New-Object PSCustomObject -Property ([ordered]@{
             Name = $Name
@@ -1122,8 +1149,7 @@ function Add-PackageSource
             InstallationPolicy = if($Trusted) {'Trusted'} else {'Untrusted'}
             QueryKey = $query_key 
             IndexName = $index_name
-            SecondaryLocation = $secondary_location
-        })
+            })
 
     #TODO: Check if name already exists
     $script:ContainerSources.Add($Name, $moduleSource)
@@ -1135,6 +1161,28 @@ function Add-PackageSource
 
 function Remove-PackageSource
 {
+    param
+    (
+        [string]
+        $Name
+    )
+    
+    Set-ModuleSourcesVariable -Force
+
+    if(-not $script:ContainerSources.Contains($Name))
+    {
+        Write-Error -Message "Package source $Name not found" `
+                        -ErrorId "Package source $Name not found" `
+                        -Category InvalidOperation `
+                        -TargetObject $Name
+        continue
+    }
+
+    $script:ContainerSources.Remove($Name)
+
+    Save-ModuleSources
+
+    Write-Verbose ($LocalizedData.PackageSourceUnregistered -f ($Name))
 }
 
 function Resolve-PackageSource
@@ -1182,17 +1230,7 @@ function Resolve-PackageSource
 
                 Write-Output -InputObject $packageSource
             }
-            <#
-            elseif( -not (Test-WildcardPattern $moduleSourceName))
-            {
-                $message = "$moduleSourceName not found"
-
-                Write-Error -Message $message `
-                            -ErrorId "RepositoryNotFound" `
-                            -Category InvalidOperation `
-                            -TargetObject $moduleSourceName
-            }
-            #>
+            
         }
     }
 }
@@ -1202,7 +1240,7 @@ function Save-ModuleSources
     # check if exists
     if(-not (Test-Path $script:location_modules))
     {
-        md $script:location_modules
+        $null = md $script:location_modules
     }
 
     # seralize module
@@ -1230,11 +1268,6 @@ function New-PackageSourceFromModuleSource
     if ([string]::IsNullOrWhiteSpace($ModuleSource.$script:IndexName))
     {
         $packageSourceDetails[$script:IndexName] = $ModuleSource.$script:IndexName
-    }
-
-    if ([string]::IsNullOrWhiteSpace($ModuleSource.$script:secondaryPath))
-    {
-        $packageSourceDetails[$script:secondaryPath] = $ModuleSource.$script:secondaryPath
     }
 
     # create a new package source
