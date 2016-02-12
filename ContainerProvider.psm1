@@ -620,14 +620,14 @@ function Find-UNCPath
         if((-not $Name) -or ($Name.ToLower().Contains("nano")))
         {
             $search_nano = "*nano*.wim"
-            
+
             $images_nano = @()
             $images_nano = Get-ChildItem -Path $localPath `
                                     -ErrorAction SilentlyContinue `
                                     -Filter $search_nano `
                                     -Recurse `
                                     -File `
-                                    -Depth 3 `
+                                    -Depth 1 `
                                     -Force | % { $_.FullName }
 
             foreach($nanoImage in $images_nano)
@@ -657,7 +657,7 @@ function Find-UNCPath
                                     -Filter $search_server `
                                     -Recurse `
                                     -File `
-                                    -Depth 3 `
+                                    -Depth 0 `
                                     -Force | % { $_.FullName }
         
             foreach($serverImage in $images_server)
@@ -1182,7 +1182,7 @@ function Remove-PackageSource
 
     Save-ModuleSources
 
-    Write-Verbose ($LocalizedData.PackageSourceUnregistered -f ($Name))
+    #Write-Verbose ($LocalizedData.PackageSourceUnregistered -f ($Name))
 }
 
 function Resolve-PackageSource
