@@ -999,7 +999,7 @@ function Install-Package
 {
     param(
         [string] $fastPackageReference
-    )   	
+    )
 
     [string[]] $splitterArray = @("$separator")
     
