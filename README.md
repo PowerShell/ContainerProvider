@@ -20,12 +20,12 @@ Initial public release for ContainerProvider
 Adding capacity to handle folders on share 
 
 #### 0.6.2.0
-Revamped the provider:
-	1. Renamed to ContainerImage
-	2. Abides by all OneGet Provider Rules
-	3. Updated the parameter Destination to Path/LiteralPath
-	4. Can handle folders on share
-	5. Fixed the issue of downloading large installer on Nano and remoting via BITS
+#####Revamped the provider:
+######1. Renamed to ContainerImage
+######2. Abides by all OneGet Provider Rules
+######3. Updated the parameter Destination to Path/LiteralPath
+######4. Can handle folders on share
+######5. Fixed the issue of downloading large installer on Nano and remoting via BITS
 
 ### Dependencies
 This module has no dependencies
