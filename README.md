@@ -1,5 +1,5 @@
 ### Introduction
-ContainerImage is a Windows PowerShell module to find, save or install Containers.
+ContainerImage is a <a href="https://oneget.org/">PackageManagement</a> provider to find, save or install Container Images.
 
 ### ContainerImage cmdlets
 	- Find-ContainerImage [[-Name] <string[]>] [-MinimumVersion <version>] [-MaximumVersion <version>] [-RequiredVersion <version>] [-AllVersions] [-source <string>] [<CommonParameters>]
