@@ -1,7 +1,7 @@
 ### Introduction
 #### Install a Container image from the online Package repository
 
-The Container OS images for Nano Server and Windows Server Core are now available in an online package repository.  They can be found and installed using the ContainerImage provider of PackageManagement (a.k.a. OneGet) PowerShell module.  The provider needs to be installed before using it. The following PowerShell cmdlets can be used to install the provider.
+The Container OS images for Nano Server and Windows Server Core are now available in an online package repository.  They can be found and installed using the ContainerImage provider of PackageManagement (a.k.a. <a href="http://www.oneget.org">OneGet</>a) PowerShell module.  The provider needs to be installed before using it. The following PowerShell cmdlets can be used to install the provider.
 * Install-PackageProvider ContainerImage 
 * Import-ContainerImage ContainerImage
 
@@ -115,7 +115,7 @@ You can inventory what Container images are installed, using PackageManagement G
 	#Downloads the image from the cloud and installs them on the local computer. The Install-ContainerImage gets the container image that meets the specified cirteria from the cloud.  It saves the image locally and then installs it.
 	
 	# Installing the latest version of the given name to the local machine
-	-Install -ContainerImage -Name ImageName
+	-Install-ContainerImage -Name ImageName
 	
 	# Installing the latest version of the given name from ContainerImageGallery to the local machine
 	-Install-ContainerImage -Name ImageName -Source ContainerImageGallery
