@@ -143,13 +143,14 @@ Initial public release for ContainerProvider
 #### 0.5.3
 Adding capacity to handle folders on share 
 
-#### 0.6.2.0
+#### 0.6.3.0
 #####Revamped the provider:
 ######1. Renamed to ContainerImage
 ######2. Abides by all OneGet Provider Rules
 ######3. Updated the parameter Destination to Path/LiteralPath
 ######4. Can handle folders on share
 ######5. Fixed the issue of downloading large installer on Nano and remoting via BITS
+######6. This version needs the Windows Server 2016 Technical Preview 5 operating system, otherwise the commands will fail
 
 ### Dependencies
 This module has no dependencies
