@@ -12,7 +12,7 @@ The 2nd set is generic PackageManagement cmdlets, including:
 •	Find-Package
 •	Save-Package
 •	Get-Package
-The 2nd set of cmdlets are performed the same as the 1st set, with specifying –provider ContainerImage.  Without specifying the –provider parameter, it may perform slightly slower as PackageManagement will iterate all its providers.  Below is the detailed usage. For a complete usage of the cmdlets, use get-help <cmdlet>. For the general usage of the Containers, read the container MSDN doc.
+The 2nd set of cmdlets are performed the same as the 1st set, with specifying –provider ContainerImage.  Without specifying the –provider parameter, it may perform slightly slower as PackageManagement will iterate all its providers.  Below is the detailed usage. For a complete usage of the cmdlets, use get-help <cmdlet>. For the general usage of the Containers, read the<a href="https://msdn.microsoft.com/en-us/virtualization/windowscontainers/management/manage_images"> container MSDN doc</a>.
 Search a Container Image
 Both Find-ContainerImage and Find-Package search and return a list of Container images available in the online repository. 
 
@@ -65,7 +65,7 @@ You can inventory what Container images are installed, using PackageManagement G
 	- Install-ContainerImage [-Force] [-Source <string>] [-WhatIf] [-Confirm]  [<CommonParameters>]    
     - Install-ContainerImage [-Name] <string[]> [-MinimumVersion <version>] [-MaximumVersion <version>] [-RequiredVersion <version>] [-Force] [-Source <string>] [-WhatIf] [-Confirm] [<CommonParameters>]
 
-### Examples
+### More examples
 	#Finds the container image from an online gallery that match specified criteria. It can also search from other registered sources.
 	# Find the latest version of all available container images
 	Find-ContainerImage
