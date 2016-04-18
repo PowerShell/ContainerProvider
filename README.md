@@ -1,5 +1,62 @@
 ### Introduction
-ContainerImage is a Windows PowerShell module to find, save or install Containers.
+#### Install a Container image from the online Package repository
+
+The Container OS images for Nano Server and Windows Server Core are now available in an online package repository.  They can be found and installed using the ContainerImage provider of PackageManagement (a.k.a. OneGet) PowerShell module.  The provider needs to be installed before using it. The following PowerShell cmdlets can be used to install the provider.
+Install-PackageProvider ContainerImage 
+Import-ContainerImage ContainerImage
+Once the provider is installed and imported, you can search, download, or install Container images using PowerShell cmdlets. There are two sets of cmdlets, the first set is specific for the Container OS images, including:
+•	Find-ContainerImage
+•	Save-ContainerImage
+•	Install-ContainerImage
+The 2nd set is generic PackageManagement cmdlets, including:
+•	Find-Package
+•	Save-Package
+•	Get-Package
+The 2nd set of cmdlets are performed the same as the 1st set, with specifying –provider ContainerImage.  Without specifying the –provider parameter, it may perform slightly slower as PackageManagement will iterate all its providers.  Below is the detailed usage. For a complete usage of the cmdlets, use get-help <cmdlet>. For the general usage of the Containers, read the container MSDN doc.
+Search a Container Image
+Both Find-ContainerImage and Find-Package search and return a list of Container images available in the online repository. 
+
+##### Example 1: Find the latest version of all available Container images. 
+	Find-ContainerImage
+	Find-Package –provider ContainerImage
+    
+##### Example 2: Search by the image name. The –name parameter accepts wildcard.
+	Find-ContainerImage -Name *nano*
+	Find-Package –provider ContainerImage -Name *nano *
+   
+##### Example 3: Search by version, according to –RequiredVersion, -MinimumVersion, and –MaximumVersion requirements. With –AllVersions parameter, all available versions of a Container image are returned. Without it, only the latest version is returned.
+    Find-ContainerImage -Name *nano* -RequiredVersion 10.0.14300.1000
+    Find-Package –provider ContainerImage –AllVersions -Name *nano*
+
+#### Install a Container
+Install-ContainerImage installs a Container image to the local machine. Both cmdlets accept pipeline result from search cmdlets. The operating system:
+1.must have the Containers Package (i.e. Microsoft-NanoServer-Containers-Package Windows package) installed
+2.version must match the version of Container OS image, i.e. 10.0.14300.1000
+Otherwise, the installation will fail.
+
+##### Example 1: Install the latest version of a Container image to the local machine.
+	Install-ContainerImage -Name NanoServer
+
+##### Example 2: Install a Container image with pipeline result from the search cmdlets.
+	Find-ContainerImage *nano* | Install-ContainerImage
+	Find-ContainerImage -Name *windowsServercore * |Install-ContainerImage
+
+#### Download a Container image
+You can download and save a Container image without installation, using Save-ContainerImage or Save-Package. Both cmdlets accept pipeline result from the search cmdlets.
+
+##### Example 1: Download and save a Container image to a directory that matches the wildcard path. The latest version will be saved if you do not specify the version requirements.
+	Save-ContainerImage -Name NanoServer -Path C:\t*p\
+	Save-Package –provider ContainerImage  -Name WindowsServerCore -Path .\temp -MinimumVersion 10.0.14300.1000
+
+##### Example 2: Download and save a ContainerImage from the search cmdlets.
+	Find-ContainerImage -Name *nano* -MaximumVersion 10.2 -MinimumVersion 1.0 | Save-ContainerImage -Path c:\
+	Find-Package -provider ContainerImage -Name *shield* -Culture es-es | Save-Package -Path .
+
+#### Inventory installed Container images
+You can inventory what Container images are installed, using PackageManagement Get-Package cmdlet. 
+
+##### Example 1: Inventory what Container images are installed in the local machine.
+	Get-Package –provider ContainerImage
 
 ### ContainerImage cmdlets
 	- Find-ContainerImage [[-Name] <string[]>] [-MinimumVersion <version>] [-MaximumVersion <version>] [-RequiredVersion <version>] [-AllVersions] [-source <string>] [<CommonParameters>]
