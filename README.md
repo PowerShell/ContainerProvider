@@ -1,9 +1,11 @@
-### Introduction
-#### Install a Container image from the online Package repository
+## Introduction
+### Install a Container image from the online Package repository
 
 The Container OS images for Nano Server and Windows Server Core are now available in an online package repository.  They can be found and installed using the ContainerImage provider of PackageManagement (a.k.a. <a href="http://www.oneget.org">OneGet</a>) PowerShell module.  The provider needs to be installed before using it. The following PowerShell cmdlets can be used to install the provider.
 * Install-PackageProvider ContainerImage 
-* Import-ContainerImage ContainerImage
+* Import-PackageProvider ContainerImage
+
+You can add -force to both cmdlets to overwrite an existing older version of this provider.
 
 Once the provider is installed and imported, you can search, download, or install Container images using PowerShell cmdlets. There are two sets of cmdlets, the first set is specific for the Container OS images, including:
 * Find-ContainerImage
@@ -61,6 +63,16 @@ You can inventory what Container images are installed, using PackageManagement G
 
 ##### Example 1: Inventory what Container images are installed in the local machine.
 	Get-Package –provider ContainerImage
+
+### Migrate from Windows Server 2016 Technical Preview 4 (TP4) to Windows Server 2016 Technical Preview 5 (TP5)
+The ContainerImage provider version 0.6.x.x only works with the TP5 hosts. If you have an old TP4 host, although you can still install this version of ContainerImage provider, you will run into an error when trying to use any of the cmdlets mentioned above.
+
+In order to migrate to the TP5 Containers, you will need to:
+
+1. Upgrade the host to TP5 host with version 10.0.14300.0
+2. Install and import the ContainerImage provider with version 0.6.x.x
+3. Use the cmdlets above to search/install/download the TP5 container OS images
+
 
 ### ContainerImage cmdlets
 	- Find-ContainerImage [[-Name] <string[]>] [-MinimumVersion <version>] [-MaximumVersion <version>] [-RequiredVersion <version>] [-AllVersions] [-source <string>] [<CommonParameters>]
@@ -143,9 +155,9 @@ Initial public release for ContainerProvider
 #### 0.5.3
 Adding capacity to handle folders on share 
 
-#### 0.6.3.0
+#### 0.6.4.0
 #####Revamped the provider:
-######1. Renamed to ContainerImage
+######1. Renamed the provider name from ContainerProvider to ContainerImage
 ######2. Abides by all OneGet Provider Rules
 ######3. Updated the parameter Destination to Path/LiteralPath
 ######4. Can handle folders on share
