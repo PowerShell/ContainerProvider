@@ -15,7 +15,6 @@ Once the provider is installed and imported, you can search, download, or instal
 The 2nd set is generic PackageManagement cmdlets, including:
 * Find-Package
 * Save-Package
-* Get-Package
 
 The 2nd set of cmdlets are performed the same as the 1st set, with specifying –provider ContainerImage.  Without specifying the –provider parameter, it may perform slightly slower as PackageManagement will iterate all its providers.  Below is the detailed usage. For a complete usage of the cmdlets, use get-help <cmdlet>. For the general usage of the Containers, read the<a href="https://msdn.microsoft.com/en-us/virtualization/windowscontainers/management/manage_images"> container MSDN doc</a>.
 
@@ -59,10 +58,10 @@ You can download and save a Container image without installation, using Save-Con
 	Find-Package -provider ContainerImage -Name *shield* -Culture es-es | Save-Package -Path .
 
 #### Inventory installed Container images
-You can inventory what Container images are installed, using PackageManagement Get-Package cmdlet. 
+You can inventory what Container images are installed, using Get-ContainerImage cmdlet. 
 
 ##### Example 1: Inventory what Container images are installed in the local machine.
-	Get-Package –provider ContainerImage
+	Get-ContainerImage
 
 ### Migrate from Windows Server 2016 Technical Preview 4 (TP4) to Windows Server 2016 Technical Preview 5 (TP5)
 The ContainerImage provider version 0.6.x.x only works with the TP5 hosts. If you have an old TP4 host, although you can still install this version of ContainerImage provider, you will run into an error when trying to use any of the cmdlets mentioned above.
