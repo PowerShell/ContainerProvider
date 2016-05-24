@@ -39,6 +39,11 @@ Install-ContainerImage installs a Container image to the local machine. Both cmd
 2.version must match the version of Container OS image, i.e. 10.0.14300.1000
 Otherwise, the installation will fail.
 
+Also, the operating system needs to have container windows feature. In order to install the container windows feature, use the following command:
+
+- On the windows server: *Install-WindowsFeature Containers*
+- The OS will need to restart
+
 ##### Example 1: Install the latest version of a Container image to the local machine.
 	Install-ContainerImage -Name NanoServer
 
